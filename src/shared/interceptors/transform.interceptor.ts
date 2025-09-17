@@ -23,6 +23,7 @@ export class TransformInterceptor<T>
   ): Observable<Response<T>> {
     return next.handle().pipe(
       map((data) => {
+        console.log('Data before transform:', data);
         //Cách để lấy status code nếu cần
         const ctx = context.switchToHttp();
         const response = ctx.getResponse();
