@@ -6,13 +6,15 @@ import {
   VerificationBodyType,
 } from './auth.model';
 import { UserType } from 'src/shared/models/share-user.model';
+import { VerificationCodeType } from '@prisma/client';
 
 @Injectable()
 export class AuthRepository {
   constructor(private readonly prismaService: PrismaService) {}
 
   async createUser(
-    data: Omit<RegisterBodyType, 'confirmPassword'> & Pick<UserType, 'roleId'>,
+    data: Omit<RegisterBodyType, 'confirmPassword' | 'otp'> &
+      Pick<UserType, 'roleId'>,
   ): Promise<RegisterResType> {
     const user = await this.prismaService.user.create({
       data,
@@ -40,6 +42,22 @@ export class AuthRepository {
         expiresAt: payload.expiresAt,
       },
     });
+    return verificationCode;
+  }
+
+  async findVerificationCodeByEmail(
+    email: string,
+    otp: string,
+    type: VerificationCodeType,
+  ): Promise<VerificationBodyType | null> {
+    const verificationCode =
+      await this.prismaService.verificationCode.findUnique({
+        where: {
+          email,
+          code: otp,
+          type,
+        },
+      });
     return verificationCode;
   }
 }

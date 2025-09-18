@@ -7,6 +7,7 @@ import {
   ConflictException,
   Injectable,
   UnauthorizedException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { HashingService } from 'src/shared/services/hashing.service';
 import { PrismaService } from 'src/shared/services/prisma.service';
@@ -23,6 +24,7 @@ import { ShareUserRepository } from 'src/shared/repositories/share-user.repo';
 import { addMilliseconds } from 'date-fns';
 import envConfig from 'src/shared/config';
 import ms from 'ms';
+import { VerificationCodeType } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -44,6 +46,31 @@ export class AuthService {
       if (isEmailExist) {
         throw new ConflictException('Email already exists');
       }
+
+      const codeByEmail = await this.authRepository.findVerificationCodeByEmail(
+        body.email,
+        body.otp,
+        VerificationCodeType.REGISTER,
+      );
+
+      if (codeByEmail?.code !== body.otp) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'OTP is incorrect',
+            path: 'code',
+          },
+        ]);
+      }
+
+      if (codeByEmail?.expiresAt < new Date()) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'OTP has expired',
+            path: 'code',
+          },
+        ]);
+      }
+
       const user = await this.authRepository.createUser({
         email: body.email,
         name: body.name,

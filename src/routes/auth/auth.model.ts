@@ -10,6 +10,7 @@ export const RegisterBodySchema = UserSchema.pick({
 })
   .extend({
     confirmPassword: z.string().min(6).max(100),
+    otp: z.string().length(6),
   })
   .strict() // .strict() để không cho phép các trường dư thừa
   .superRefine(({ confirmPassword, password }, ctx) => {
