@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/shared/services/prisma.service';
-import { RegisterBodyType, RegisterResType, UserType } from './auth.model';
+import {
+  RegisterBodyType,
+  RegisterResType,
+  VerificationBodyType,
+} from './auth.model';
+import { UserType } from 'src/shared/models/share-user.model';
 
 @Injectable()
 export class AuthRepository {
@@ -17,5 +22,24 @@ export class AuthRepository {
       },
     });
     return user;
+  }
+
+  async createVerificationCode(
+    payload: Pick<
+      VerificationBodyType,
+      'email' | 'code' | 'type' | 'expiresAt'
+    >,
+  ): Promise<VerificationBodyType> {
+    const verificationCode = await this.prismaService.verificationCode.upsert({
+      where: {
+        email: payload.email,
+      },
+      create: payload,
+      update: {
+        code: payload.code,
+        expiresAt: payload.expiresAt,
+      },
+    });
+    return verificationCode;
   }
 }

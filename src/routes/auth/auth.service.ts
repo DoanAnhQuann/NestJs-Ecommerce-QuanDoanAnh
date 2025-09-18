@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/await-thenable */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
@@ -10,10 +11,18 @@ import {
 import { HashingService } from 'src/shared/services/hashing.service';
 import { PrismaService } from 'src/shared/services/prisma.service';
 import { TokenService } from 'src/shared/services/token.service';
-import { isNotFoundError } from 'src/shared/helper';
+import { generateOTP, isNotFoundError } from 'src/shared/helper';
 import { RolesService } from './roles.service';
-import { RegisterBodyType, RegisterResType } from './auth.model';
+import {
+  RegisterBodyType,
+  RegisterResType,
+  SendOTPBodyType,
+} from './auth.model';
 import { AuthRepository } from './auth.repo';
+import { ShareUserRepository } from 'src/shared/repositories/share-user.repo';
+import { addMilliseconds } from 'date-fns';
+import envConfig from 'src/shared/config';
+import ms from 'ms';
 
 @Injectable()
 export class AuthService {
@@ -23,14 +32,15 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly rolesService: RolesService,
     private readonly authRepository: AuthRepository,
+    private readonly shareUserRepository: ShareUserRepository,
   ) {}
   async register(body: RegisterBodyType): Promise<RegisterResType> {
     try {
       const hashedPassword = await this.hashingService.hash(body.password);
       const roleId = await this.rolesService.getClientRoleId();
-      const isEmailExist = await this.prismaService.user.findFirst({
-        where: { email: body.email },
-      });
+      const isEmailExist = await this.shareUserRepository.findUserByEmail(
+        body.email,
+      );
       if (isEmailExist) {
         throw new ConflictException('Email already exists');
       }
@@ -47,6 +57,31 @@ export class AuthService {
       console.error('Có lỗi xảy ra khi đăng kí!', error);
       throw error;
     }
+  }
+
+  async sendOTP(body: SendOTPBodyType) {
+    // Kiểm tra email có tồn tại trong hệ thống không
+    const isEmailExist = await this.shareUserRepository.findUserByEmail(
+      body.email,
+    );
+    console.log(body.email);
+    if (isEmailExist) {
+      throw new ConflictException('Email already exists');
+    }
+
+    //Tạo mã otp
+    const code = generateOTP();
+    const verificationCode = await this.authRepository.createVerificationCode({
+      email: body.email,
+      code,
+      type: 'REGISTER',
+      expiresAt: addMilliseconds(
+        new Date(),
+        ms(envConfig.OTP_EXPIRES_IN as ms.StringValue),
+      ),
+    });
+
+    return verificationCode;
   }
 
   async login(body: any): Promise<any> {

@@ -7,6 +7,7 @@ import { AccessTokenGuard } from './guards/access-token.guard';
 import { ApiKeyGuard } from './guards/api-key.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthenticationGuard } from './guards/authentication.guard';
+import { ShareUserRepository } from './repositories/share-user.repo';
 
 const sharedService = [
   PrismaService,
@@ -14,6 +15,7 @@ const sharedService = [
   TokenService,
   AccessTokenGuard,
   ApiKeyGuard,
+  ShareUserRepository,
 ];
 
 @Global() //Decorator muốn dùng cho cả app
