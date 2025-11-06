@@ -54,3 +54,51 @@ export const SendOTPBodySchema = VerificationCodeSchema.pick({
 }).strict();
 
 export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>;
+
+export const LoginBodySchema = UserSchema.pick({
+  email: true,
+  password: true,
+}).strict();
+
+export type LoginBodyType = z.infer<typeof LoginBodySchema>;
+
+export const LoginResSchema = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+});
+
+export type LoginResType = z.infer<typeof LoginResSchema>;
+
+export const RefreshTokenBodySchema = LoginResSchema.pick({
+  refreshToken: true,
+}).strict();
+
+export type RefreshTokenBodyType = z.infer<typeof RefreshTokenBodySchema>;
+
+export const RefreshTokenResSchema = LoginResSchema;
+
+export type RefreshTokenResType = z.infer<typeof RefreshTokenResSchema>;
+
+export const DeviceSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  userAgent: z.string(),
+  ip: z.string(),
+  lastActive: z.date(),
+  createdAt: z.date(),
+  isActive: z.boolean(),
+});
+
+export type DeviceType = z.infer<typeof DeviceSchema>;
+
+export const RefreshTokenSchema = z.object({
+  token: z.string(),
+  userId: z.number(),
+  deviceId: z.number(),
+  expiresAt: z.date(),
+  createdAt: z.date(),
+});
+
+export const LogoutBodySchema = RefreshTokenBodySchema;
+export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>;
+export type LogoutBodyType = z.infer<typeof LogoutBodySchema>;

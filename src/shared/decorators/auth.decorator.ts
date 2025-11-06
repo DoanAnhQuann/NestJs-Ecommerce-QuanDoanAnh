@@ -17,3 +17,5 @@ export const Auth = (
     options: options ?? { condition: ConditionGuard.AND },
   });
 };
+
+export const IsPublic = () => Auth([AuthType.None]);
