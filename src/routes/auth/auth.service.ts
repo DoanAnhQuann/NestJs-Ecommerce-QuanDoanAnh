@@ -83,6 +83,7 @@ export class AuthService {
         phoneNumber: body.phoneNumber,
         password: hashedPassword,
         roleId,
+        avatar: null,
       });
 
       return user;

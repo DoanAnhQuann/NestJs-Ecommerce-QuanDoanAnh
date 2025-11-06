@@ -99,6 +99,17 @@ export const RefreshTokenSchema = z.object({
   createdAt: z.date(),
 });
 
+export const GoogleAuthStateSchema = z.object({
+  userAgent: z.string(),
+  ip: z.string(),
+});
+
+export const GetAuthorizationUrlSchema = z.object({
+  url: z.string().url(),
+});
+
+export type GetAuthorizationUrlType = z.infer<typeof GetAuthorizationUrlSchema>;
+export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>;
 export const LogoutBodySchema = RefreshTokenBodySchema;
 export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>;
 export type LogoutBodyType = z.infer<typeof LogoutBodySchema>;

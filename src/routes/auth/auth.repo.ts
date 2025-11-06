@@ -16,7 +16,7 @@ export class AuthRepository {
 
   async createUser(
     data: Omit<RegisterBodyType, 'confirmPassword' | 'otp'> &
-      Pick<UserType, 'roleId'>,
+      Pick<UserType, 'roleId' | 'avatar'>,
   ): Promise<RegisterResType> {
     const user = await this.prismaService.user.create({
       data,
@@ -112,6 +112,20 @@ export class AuthRepository {
   }): Promise<RefreshTokenType> {
     return this.prismaService.refreshToken.delete({
       where: uniqueObject,
+    });
+  }
+
+  async findUserByEmail(
+    email: string,
+  ): Promise<Omit<UserType, 'password' | 'totpSecret'> | null> {
+    return this.prismaService.user.findUnique({
+      where: {
+        email,
+      },
+      omit: {
+        password: true,
+        totpSecret: true,
+      },
     });
   }
 }

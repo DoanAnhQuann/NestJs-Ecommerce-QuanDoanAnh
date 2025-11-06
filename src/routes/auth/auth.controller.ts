@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
@@ -5,10 +6,13 @@ import {
   Body,
   ClassSerializerInterceptor,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Ip,
   Post,
+  Query,
+  Res,
   SerializeOptions,
   UseGuards,
   UseInterceptors,
@@ -17,6 +21,7 @@ import { AuthService } from './auth.service';
 
 import { AccessTokenGuard } from 'src/shared/guards/access-token.guard';
 import {
+  GetAuthorizationUrlDTO,
   LoginBodyDTO,
   LoginResponseDTO,
   LogoutBodyDTO,
@@ -31,10 +36,16 @@ import { RegisterResType } from './auth.model';
 import { UserAgent } from 'src/shared/decorators/user-agent.decorator';
 import { MessageResDTO } from 'src/shared/dtos/response.dto';
 import { IsPublic } from 'src/shared/decorators/auth.decorator';
+import { GoogleService } from './google.service';
+import type { Response } from 'express';
+import envConfig from 'src/shared/config';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private googleService: GoogleService,
+  ) {}
 
   @Post('register')
   @IsPublic()
@@ -90,5 +101,35 @@ export class AuthController {
   async logout(@Body() body: LogoutBodyDTO) {
     const result = await this.authService.logout(body);
     return result;
+  }
+
+  @Get('google-link')
+  @IsPublic()
+  @ZodSerializerDto(GetAuthorizationUrlDTO)
+  getAuthorizationUrl(@UserAgent() userAgent: string, @Ip() ip: string) {
+    return this.googleService.getAuthorizationUrl({ userAgent, ip });
+  }
+
+  @Get('google/callback')
+  @IsPublic()
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
+    try {
+      const data = await this.googleService.handleGoogleCallback(code, state);
+      return res.redirect(
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?accessToken=${data.accessToken}&refreshToken=${data.refreshToken}`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Đã xảy ra lỗi khi đăng kí bằng GOOGLE vui lòng thử lại bằng cách khác!';
+      return res.redirect(
+        `${envConfig.GOOGLE_CLIENT_REDIRECT_URI}?errorMessage=${errorMessage}`,
+      );
+    }
   }
 }
