@@ -9,6 +9,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { AuthenticationGuard } from './guards/authentication.guard';
 import { ShareUserRepository } from './repositories/share-user.repo';
 import { SendEmailService } from './services/send-email.service';
+import { TwoFactorAuthService } from './services/2fa.service';
 
 const sharedService = [
   PrismaService,
@@ -18,6 +19,7 @@ const sharedService = [
   ApiKeyGuard,
   ShareUserRepository,
   SendEmailService,
+  TwoFactorAuthService,
 ];
 
 @Global() //Decorator muốn dùng cho cả app

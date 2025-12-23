@@ -14,4 +14,12 @@ export class ShareUserRepository {
 
     return user;
   }
+
+  async findUserById(userId: number): Promise<UserType | null> {
+    const user = await this.prismaService.user.findUnique({
+      where: { id: userId },
+    });
+
+    return user;
+  }
 }

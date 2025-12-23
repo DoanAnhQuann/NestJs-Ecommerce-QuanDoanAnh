@@ -13,7 +13,6 @@ export class SendEmailService {
 
   private async renderTemplate(filename: string, data: Record<string, any>) {
     const filePath = join('src/shared/templates', filename);
-    console.log(filePath);
     const source = await fs.readFile(filePath, 'utf8');
     const template = Handlebars.compile(source);
     return template(data);

@@ -36,7 +36,11 @@ export class AuthRepository {
   ): Promise<VerificationBodyType> {
     const verificationCode = await this.prismaService.verificationCode.upsert({
       where: {
-        email: payload.email,
+        email_code_type: {
+          email: payload.email,
+          code: payload.code,
+          type: payload.type,
+        },
       },
       create: payload,
       update: {
@@ -55,9 +59,11 @@ export class AuthRepository {
     const verificationCode =
       await this.prismaService.verificationCode.findUnique({
         where: {
-          email,
-          code: otp,
-          type,
+          email_code_type: {
+            email,
+            code: otp,
+            type,
+          },
         },
       });
     return verificationCode;
@@ -126,6 +132,18 @@ export class AuthRepository {
         password: true,
         totpSecret: true,
       },
+    });
+  }
+
+  async updateUser(
+    userId: number,
+    data: Partial<Pick<UserType, 'password' | 'totpSecret'>>,
+  ): Promise<Omit<UserType, 'password' | 'totpSecret'>> {
+    return this.prismaService.user.update({
+      where: {
+        id: userId,
+      },
+      data,
     });
   }
 }

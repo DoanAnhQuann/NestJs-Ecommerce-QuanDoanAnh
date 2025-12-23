@@ -45,7 +45,6 @@ export const VerificationCodeSchema = z.object({
   expiresAt: z.date(),
   createdAt: z.date(),
 });
-
 export type VerificationBodyType = z.infer<typeof VerificationCodeSchema>;
 
 export const SendOTPBodySchema = VerificationCodeSchema.pick({
@@ -58,7 +57,28 @@ export type SendOTPBodyType = z.infer<typeof SendOTPBodySchema>;
 export const LoginBodySchema = UserSchema.pick({
   email: true,
   password: true,
-}).strict();
+})
+  .extend({
+    totpCode: z.string().length(6).optional(), //2fa
+    code: z.string().length(6).optional(), //email otp code
+  })
+  .strict()
+  .superRefine(({ totpCode, code }, ctx) => {
+    if (totpCode !== undefined && code !== undefined) {
+      ctx.addIssue({
+        path: ['totpCode'],
+        code: 'custom',
+        message:
+          'Bạn hãy cung cấp một trong hai mã: TOTP code hoặc email code. Không cung cấp cả 2',
+      });
+      ctx.addIssue({
+        path: ['code'],
+        code: 'custom',
+        message:
+          'Bạn hãy cung cấp một trong hai mã: TOTP code hoặc email code. Không cung cấp cả 2',
+      });
+    }
+  });
 
 export type LoginBodyType = z.infer<typeof LoginBodySchema>;
 
@@ -108,8 +128,60 @@ export const GetAuthorizationUrlSchema = z.object({
   url: z.string().url(),
 });
 
+export const ForgotPasswordBodySchema = UserSchema.pick({
+  email: true,
+  password: true,
+})
+  .extend({
+    confirmPassword: z.string().min(6).max(100),
+    otp: z.string().length(6),
+  })
+  .strict()
+  .superRefine(({ confirmPassword, password }, ctx) => {
+    if (confirmPassword !== password) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Password and confirm password do not match',
+        path: ['confirmPassword'],
+      });
+    }
+  });
+
+export const DisableTwoFactorBodySchema = z
+  .object({
+    totpCode: z.string().length(6).optional(),
+    code: z.string().length(6).optional(),
+  })
+  .superRefine(({ totpCode, code }, ctx) => {
+    //Nếu cả 2 cùng được cung cấp hoặc cả 2 đều không được cung cấp thì sẽ nhảy if
+    if ((totpCode !== undefined) === (code !== undefined)) {
+      ctx.addIssue({
+        path: ['totpCode'],
+        code: 'custom',
+        message:
+          'Bạn hãy cung cấp một trong hai mã: TOTP code hoặc email code. Không cung cấp cả 2',
+      });
+      ctx.addIssue({
+        path: ['code'],
+        code: 'custom',
+        message:
+          'Bạn hãy cung cấp một trong hai mã: TOTP code hoặc email code. Không cung cấp cả 2',
+      });
+    }
+  });
+
+export const TwoFactorSetupResSchema = z.object({
+  secret: z.string(),
+  url: z.string(),
+});
+
+export type TwoFactorSetupResType = z.infer<typeof TwoFactorSetupResSchema>;
+export type ForgotPasswordBodyType = z.infer<typeof ForgotPasswordBodySchema>;
 export type GetAuthorizationUrlType = z.infer<typeof GetAuthorizationUrlSchema>;
 export type GoogleAuthStateType = z.infer<typeof GoogleAuthStateSchema>;
 export const LogoutBodySchema = RefreshTokenBodySchema;
 export type RefreshTokenType = z.infer<typeof RefreshTokenSchema>;
 export type LogoutBodyType = z.infer<typeof LogoutBodySchema>;
+export type DisableTwoFactorBodyType = z.infer<
+  typeof DisableTwoFactorBodySchema
+>;

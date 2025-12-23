@@ -16,6 +16,8 @@ import { TokenService } from 'src/shared/services/token.service';
 import { generateOTP, isNotFoundError } from 'src/shared/helper';
 import { RolesService } from './roles.service';
 import {
+  DisableTwoFactorBodyType,
+  ForgotPasswordBodyType,
   LoginBodyType,
   LoginResType,
   RegisterBodyType,
@@ -30,6 +32,8 @@ import ms from 'ms';
 import { VerificationCodeType } from '@prisma/client';
 import { SendEmailService } from 'src/shared/services/send-email.service';
 import { AccessTokenPayloadCreate } from 'src/shared/types/jwt.type';
+import { InvalidOTPException } from './error.model';
+import { TwoFactorAuthService } from 'src/shared/services/2fa.service';
 
 @Injectable()
 export class AuthService {
@@ -41,7 +45,37 @@ export class AuthService {
     private readonly authRepository: AuthRepository,
     private readonly shareUserRepository: ShareUserRepository,
     private readonly sendEmail: SendEmailService,
+    private readonly twoFactorAuthService: TwoFactorAuthService,
   ) {}
+  async validateVericationCode({
+    email,
+    otp,
+    type,
+  }: {
+    email: string;
+    otp: string;
+    type: VerificationCodeType;
+  }) {
+    const codeByEmail = await this.authRepository.findVerificationCodeByEmail(
+      email,
+      otp,
+      type,
+    );
+
+    if (codeByEmail?.code !== otp) {
+      throw new UnprocessableEntityException([
+        {
+          message: 'OTP is incorrect',
+          path: 'code',
+        },
+      ]);
+    }
+
+    if (codeByEmail?.expiresAt < new Date()) {
+      throw InvalidOTPException;
+    }
+  }
+
   async register(body: RegisterBodyType): Promise<RegisterResType> {
     try {
       const hashedPassword = await this.hashingService.hash(body.password);
@@ -53,29 +87,11 @@ export class AuthService {
         throw new ConflictException('Email already exists');
       }
 
-      const codeByEmail = await this.authRepository.findVerificationCodeByEmail(
-        body.email,
-        body.otp,
-        VerificationCodeType.REGISTER,
-      );
-
-      if (codeByEmail?.code !== body.otp) {
-        throw new UnprocessableEntityException([
-          {
-            message: 'OTP is incorrect',
-            path: 'code',
-          },
-        ]);
-      }
-
-      if (codeByEmail?.expiresAt < new Date()) {
-        throw new UnprocessableEntityException([
-          {
-            message: 'OTP has expired',
-            path: 'code',
-          },
-        ]);
-      }
+      await this.validateVericationCode({
+        email: body.email,
+        otp: body.otp,
+        type: VerificationCodeType.REGISTER,
+      });
 
       const user = await this.authRepository.createUser({
         email: body.email,
@@ -98,8 +114,7 @@ export class AuthService {
     const isEmailExist = await this.shareUserRepository.findUserByEmail(
       body.email,
     );
-    console.log(body.email);
-    if (isEmailExist) {
+    if (isEmailExist && body.type === VerificationCodeType.REGISTER) {
       throw new ConflictException('Email already exists');
     }
 
@@ -108,7 +123,7 @@ export class AuthService {
     const verificationCode = await this.authRepository.createVerificationCode({
       email: body.email,
       code,
-      type: 'REGISTER',
+      type: body.type,
       expiresAt: addMilliseconds(
         new Date(),
         ms(envConfig.OTP_EXPIRES_IN as ms.StringValue),
@@ -151,12 +166,51 @@ export class AuthService {
         },
       ]);
     }
+
+    //2. Nếu user có bật 2fa thì kiểm tra mã totp hoặc otp
+    if (user.totpSecret) {
+      //Nếu cả 2 mã đều không được cung cấp thì throw lỗi
+      if (!body.totpCode && !body.code) {
+        throw new UnauthorizedException([
+          {
+            field: 'totpCode or code',
+            message: 'Two factor authentication code is required',
+          },
+        ]);
+      }
+
+      //Kiểm tra mã totp nếu được cung cấp
+      if (body.totpCode) {
+        const isTOTPValid = this.twoFactorAuthService.verifyTOTP({
+          email: user.email,
+          token: body.totpCode,
+          secret: user.totpSecret,
+        });
+        if (!isTOTPValid) {
+          throw new UnauthorizedException([
+            {
+              field: 'totpCode',
+              message: 'Two factor authentication code is invalid',
+            },
+          ]);
+        }
+      } else if (body.code) {
+        await this.validateVericationCode({
+          email: user.email,
+          otp: body.code,
+          type: VerificationCodeType.LOGIN,
+        });
+      }
+    }
+
+    //3. Tạo mới device
     const device = await this.authRepository.createDevice({
       userId: user.id,
       userAgent: body.userAgent,
       ip: body.ip,
     });
 
+    //4. Tạo mới cặp access token và refresh token
     const { accessToken, refreshToken } = await this.generateTokens({
       userId: user.id,
       roleId: user.roleId,
@@ -273,5 +327,158 @@ export class AuthService {
       }
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  async forgotPassword(body: ForgotPasswordBodyType) {
+    try {
+      //Hash password mới
+      const hashedPassword = await this.hashingService.hash(body.password);
+
+      //Check email tồn tại
+      const isEmailExist = await this.shareUserRepository.findUserByEmail(
+        body.email,
+      );
+      if (!isEmailExist) {
+        throw new ConflictException('Email does not exists!');
+      }
+
+      //Tìm email và code xem có tồn tại client nhập đúng hay ko
+      const codeByEmail = await this.authRepository.findVerificationCodeByEmail(
+        body.email,
+        body.otp,
+        VerificationCodeType.FORGOT_PASSWORD,
+      );
+
+      if (codeByEmail?.code !== body.otp) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'OTP is incorrect',
+            path: 'code',
+          },
+        ]);
+      }
+
+      //Kiểm tra otp đã hết hạn chưa
+      if (codeByEmail?.expiresAt < new Date()) {
+        throw InvalidOTPException;
+      }
+
+      //Tìm user theo email
+      const user = await this.authRepository.findUserByEmail(body.email);
+
+      if (!user) {
+        throw new UnprocessableEntityException([
+          {
+            message: 'Email does not exist',
+          },
+        ]);
+      }
+
+      //Cập nhật mật khẩu mới cho user
+      await this.authRepository.updateUser(user.id, {
+        password: hashedPassword,
+      });
+
+      return {
+        message: 'Password has been reset successfully',
+      };
+    } catch (error) {
+      console.error('Có lỗi xảy ra khi đổi mật khẩu!', error);
+      throw error;
+    }
+  }
+
+  async setupTwoFactorAuthentication(userId: number) {
+    // 1. Lấy info user
+    const user = await this.shareUserRepository.findUserById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.totpSecret) {
+      throw new UnprocessableEntityException([
+        {
+          message: 'Two factor authentication is already enabled',
+          path: 'totpCode',
+        },
+      ]);
+    }
+    // 2. tạo ra secret Và uri
+    const { secret, url } = this.twoFactorAuthService.generateTOTPSecret(
+      user.email,
+    );
+
+    // 3. Cập nhật secret vào db
+    await this.authRepository.updateUser(user.id, {
+      totpSecret: secret,
+    });
+
+    // 4. Trả về secret và uri cho client
+    return {
+      secret,
+      url,
+    };
+  }
+
+  async disableTwoFactorAuthentication(
+    body: DisableTwoFactorBodyType,
+    userId: number,
+  ) {
+    //1. Kiểm tra user tồn tại và đã bật 2fa chưa
+    const user = await this.shareUserRepository.findUserById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (!user.totpSecret) {
+      throw new UnprocessableEntityException([
+        {
+          message: 'Two factor authentication is not enabled',
+        },
+      ]);
+    }
+
+    //2. Kiểm tra mã totp hoặc otp
+    if (!body.totpCode && !body.code) {
+      throw new UnauthorizedException([
+        {
+          field: 'totpCode or code',
+          message: 'Two factor authentication code or toptpcode is required',
+        },
+      ]);
+    }
+
+    if (body.totpCode) {
+      const isTOTPValid = this.twoFactorAuthService.verifyTOTP({
+        email: user.email,
+        token: body.totpCode,
+        secret: user.totpSecret,
+      });
+
+      if (!isTOTPValid) {
+        throw new UnauthorizedException([
+          {
+            field: 'totpCode',
+            message: 'Two factor authentication code is invalid',
+          },
+        ]);
+      }
+    } else if (body.code) {
+      await this.validateVericationCode({
+        email: user.email,
+        otp: body.code,
+        type: VerificationCodeType.DISABLE_2FA,
+      });
+    }
+
+    //3. Xóa totpSecret trong db
+    await this.authRepository.updateUser(user.id, {
+      totpSecret: null,
+    });
+
+    return {
+      message: 'Two factor authentication has been disabled',
+    };
   }
 }
